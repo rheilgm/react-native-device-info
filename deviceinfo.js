@@ -322,7 +322,11 @@ export default {
     return RNDeviceInfo.lastUpdateTime;
   },
   getPhoneNumber: function() {
-    return RNDeviceInfo.phoneNumber;
+    if (Platform.OS !== 'android') {
+      return RNDeviceInfo.phoneNumber;
+    } else {
+      return RNDeviceInfo.getPhoneNumber()
+    }
   },
   getCarrier: function() {
     return RNDeviceInfo.carrier;

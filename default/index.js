@@ -8,6 +8,7 @@ module.exports = {
   serialNumber: '',
   getIpAddress: () => new Promise((resolve, reject) => resolve('')),
   getMacAddress: () => new Promise((resolve, reject) => resolve('')),
+  getPhoneNumber: () => new Promise((resolve, reject) => resolve('')),
   deviceId: '',
   systemManufacturer: '',
   model: '',

@@ -236,6 +236,21 @@ public class RNDeviceModule extends ReactContextBaseJavaModule {
     p.resolve(macAddress);
   }
 
+
+
+  @ReactMethod
+    public void getPhoneNumber(Promise p) {
+      if (reactContext != null &&
+           (reactContext.checkCallingOrSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED ||
+             (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && reactContext.checkCallingOrSelfPermission(Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED) ||
+             (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && reactContext.checkCallingOrSelfPermission(Manifest.permission.READ_PHONE_NUMBERS) == PackageManager.PERMISSION_GRANTED))) {
+        TelephonyManager telMgr = (TelephonyManager) this.reactContext.getApplicationContext().getSystemService(Context.TELEPHONY_SERVICE);
+        p.resolve(telMgr.getLine1Number());
+      } else {
+        p.resolve(null);
+      }
+    }
+
   @ReactMethod
   public String getCarrier() {
     TelephonyManager telMgr = (TelephonyManager) this.reactContext.getSystemService(Context.TELEPHONY_SERVICE);
