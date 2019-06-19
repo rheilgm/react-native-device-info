@@ -3,6 +3,19 @@
 
 export type DeviceType = 'Handset' | 'Tablet' | 'Tv' | 'Unknown';
 
+export type BatteryState = 'unknown' | 'unplugged' | 'charging' | 'full';
+
+export interface PowerState {
+  batteryLevel: number;
+  batteryState: BatteryState;
+  lowPowerMode: boolean;
+  [key: string]: any;
+}
+
+export interface LocationProviderInfo {
+  [key: string]: boolean;
+}
+
 declare const _default: {
   getUniqueID: () => string;
   getManufacturer: () => string;
@@ -29,12 +42,15 @@ declare const _default: {
   isTablet: () => boolean;
   getFontScale: () => number;
   is24Hour: () => boolean;
-  isPinOrFingerprintSet(): (cb: (isPinOrFingerprintSet: boolean) => void) => void;
+  isPinOrFingerprintSet(): (
+    cb: (isPinOrFingerprintSet: boolean) => void
+  ) => void;
   hasNotch: () => boolean;
   getFirstInstallTime: () => number;
   getLastUpdateTime: () => number;
   getSerialNumber: () => string;
   getIPAddress: () => Promise<string>;
+  getCameraPresence: () => Promise<boolean>;
   getMACAddress: () => Promise<string>;
   getPhoneNumber: () => string;
   getAPILevel: () => number;
@@ -44,7 +60,7 @@ declare const _default: {
   getTotalDiskCapacity: () => number;
   getFreeDiskStorage: () => number;
   getBatteryLevel: () => Promise<number>;
-  getPowerState: () => Promise<object>;
+  getPowerState: () => Promise<PowerState>;
   isBatteryCharging: () => Promise<boolean>;
   isLandscape: () => boolean;
   isAirPlaneMode: () => Promise<boolean>;
@@ -54,6 +70,8 @@ declare const _default: {
   supportedABIs: () => string[];
   hasSystemFeature: (feature: string) => Promise<boolean>;
   getSystemAvailableFeatures: () => Promise<string[]>;
+  isLocationEnabled: () => Promise<boolean>;
+  getAvailableLocationProviders: () => Promise<LocationProviderInfo>;
 };
 
 export default _default;

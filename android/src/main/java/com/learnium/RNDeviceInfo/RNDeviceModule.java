@@ -12,8 +12,10 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.FeatureInfo;
 import android.content.res.Configuration;
+import android.location.LocationManager;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiInfo;
+import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Environment;
 import android.os.StatFs;
@@ -23,8 +25,12 @@ import android.view.WindowManager;
 import android.webkit.WebSettings;
 import android.telephony.TelephonyManager;
 import android.text.format.Formatter;
+import android.text.TextUtils;
 import android.app.ActivityManager;
 import android.util.DisplayMetrics;
+import android.hardware.Camera;
+import android.hardware.camera2.CameraManager;
+import android.hardware.camera2.CameraAccessException;
 
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.ReactApplicationContext;
@@ -33,6 +39,7 @@ import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.Callback;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.WritableArray;
+import com.facebook.react.bridge.WritableMap;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -44,6 +51,7 @@ import java.util.TimeZone;
 import java.lang.Runtime;
 import java.net.NetworkInterface;
 import java.math.BigInteger;
+import java.util.concurrent.ExecutionException;
 
 import javax.annotation.Nullable;
 
@@ -55,11 +63,24 @@ public class RNDeviceModule extends ReactContextBaseJavaModule {
 
   DeviceType deviceType;
 
-  public RNDeviceModule(ReactApplicationContext reactContext) {
+  Map<String, Object> constants;
+  AsyncTask<Void, Void, Map<String, Object>> futureConstants;
+
+  public RNDeviceModule(ReactApplicationContext reactContext, boolean loadConstantsAsynchronously) {
     super(reactContext);
 
     this.reactContext = reactContext;
     this.deviceType = getDeviceType(reactContext);
+    if (loadConstantsAsynchronously) {
+      this.futureConstants = new AsyncTask<Void, Void, Map<String, Object>>() {
+        @Override
+        protected Map<String, Object> doInBackground(Void... args) {
+          return generateConstants();
+        }
+      }.execute();
+    } else {
+      this.constants = generateConstants();
+    }
   }
 
   @Override
@@ -198,6 +219,20 @@ public class RNDeviceModule extends ReactContextBaseJavaModule {
     String ipAddress = Formatter.formatIpAddress(getWifiInfo().getIpAddress());
     p.resolve(ipAddress);
   }
+ 
+  @ReactMethod
+  public void getCameraPresence(Promise p) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+      CameraManager manager=(CameraManager)getReactApplicationContext().getSystemService(Context.CAMERA_SERVICE);
+      try {
+        p.resolve(manager.getCameraIdList().length > 0);
+      } catch (CameraAccessException e) {
+        p.reject(e);
+      }
+    } else {
+      p.resolve(Camera.getNumberOfCameras()> 0);
+    }
+  }
 
   @ReactMethod
   public void getMacAddress(Promise p) {
@@ -272,7 +307,18 @@ public class RNDeviceModule extends ReactContextBaseJavaModule {
   public BigInteger getFreeDiskStorage() {
     try {
       StatFs external = new StatFs(Environment.getExternalStorageDirectory().getAbsolutePath());
-      return BigInteger.valueOf(external.getAvailableBlocks()).multiply(BigInteger.valueOf(external.getBlockSize()));
+      long availableBlocks;
+      long blockSize;
+
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN_MR2) {
+        availableBlocks = external.getAvailableBlocks();
+        blockSize = external.getBlockSize();
+      } else {
+        availableBlocks = external.getAvailableBlocksLong();
+        blockSize = external.getBlockSizeLong();
+      }
+
+      return BigInteger.valueOf(availableBlocks).multiply(BigInteger.valueOf(blockSize));
     } catch (Exception e) {
       e.printStackTrace();
     }
@@ -356,14 +402,43 @@ public class RNDeviceModule extends ReactContextBaseJavaModule {
     p.resolve(promiseArray);
   }
 
+  @ReactMethod
+  public void isLocationEnabled(Promise p) {
+      boolean locationEnabled = false;
+
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        LocationManager mLocationManager = (LocationManager) reactContext.getApplicationContext().getSystemService(Context.LOCATION_SERVICE);
+        locationEnabled = mLocationManager.isLocationEnabled();
+      } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+        int locationMode = Settings.Secure.getInt(reactContext.getContentResolver(), Settings.Secure.LOCATION_MODE, Settings.Secure.LOCATION_MODE_OFF);
+        locationEnabled = locationMode != Settings.Secure.LOCATION_MODE_OFF;
+      } else {
+        String locationProviders = Settings.Secure.getString(reactContext.getContentResolver(), Settings.Secure.LOCATION_PROVIDERS_ALLOWED);
+        locationEnabled = !TextUtils.isEmpty(locationProviders);
+      }
+
+      p.resolve(locationEnabled);
+  }
+
+  @ReactMethod
+  public void getAvailableLocationProviders(Promise p) {
+    LocationManager mLocationManager = (LocationManager) reactContext.getApplicationContext().getSystemService(Context.LOCATION_SERVICE);
+    final List<String> providers = mLocationManager.getProviders(false);
+
+    WritableMap providersAvailability = Arguments.createMap();
+    for (String provider : providers) {
+      providersAvailability.putBoolean(provider, mLocationManager.isProviderEnabled(provider));
+    }
+
+    p.resolve(providersAvailability);
+  }
+
   public String getInstallReferrer() {
     SharedPreferences sharedPref = getReactApplicationContext().getSharedPreferences("react-native-device-info", Context.MODE_PRIVATE);
     return sharedPref.getString("installReferrer", null);
   }
 
-  @Override
-  public @Nullable
-  Map<String, Object> getConstants() {
+  private Map<String, Object> generateConstants() {
     HashMap<String, Object> constants = new HashMap<String, Object>();
 
     PackageManager packageManager = this.reactContext.getPackageManager();
@@ -467,5 +542,21 @@ public class RNDeviceModule extends ReactContextBaseJavaModule {
       constants.put("supportedABIs", new String[]{ Build.CPU_ABI });
     }
     return constants;
+  }
+
+  @Override
+  public @Nullable
+  Map<String, Object> getConstants() {
+    if (this.constants == null && this.futureConstants != null) {
+      try {
+        this.constants = this.futureConstants.get();
+      } catch (InterruptedException e) {
+        return null;
+      } catch (ExecutionException e) {
+        throw new RuntimeException(e.getCause());
+      }
+    }
+
+    return this.constants;
   }
 }
